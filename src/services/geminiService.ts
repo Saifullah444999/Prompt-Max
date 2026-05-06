@@ -19,7 +19,7 @@ export async function optimizePrompt(ordinaryPrompt: string): Promise<string> {
 
   try {
     const response = await ai.models.generateContent({
-      model: "gemini-3-flash-preview",
+      model: "gemini-flash-latest",
       contents: ordinaryPrompt,
       config: {
         systemInstruction: SYSTEM_INSTRUCTION,
@@ -44,12 +44,18 @@ export async function imageToPrompt(base64Image: string, mimeType: string): Prom
     };
     
     const textPart = {
-      text: "Analyze this image and create a highly detailed, professional prompt to recreate this image. Include lighting, composition, style, every minor detail, colors, and mood. The output should be a structured 'Master Prompt' that another AI could use to generate an identical or very similar image.",
+      text: "Analyze this image in extreme detail. Identify the subject, style, lighting, color palette, composition, camera settings (if applicable), and emotional mood. Based on this analysis, generate a high-performing 'Master Prompt' that could be used by an AI to recreate this exact visual style and level of detail. The output should follow the Prompt Max framework: Context, Task, Constraints, and Formatting.",
     };
 
+    // Use a more robust structure for multimodal content
     const response = await ai.models.generateContent({
-      model: "gemini-3-flash-preview",
-      contents: { parts: [imagePart, textPart] },
+      model: "gemini-flash-latest",
+      contents: [
+        {
+          role: "user",
+          parts: [imagePart, textPart],
+        },
+      ],
       config: {
         systemInstruction: SYSTEM_INSTRUCTION,
         temperature: 0.7,
@@ -59,6 +65,6 @@ export async function imageToPrompt(base64Image: string, mimeType: string): Prom
     return response.text || "Failed to analyze image.";
   } catch (error) {
     console.error("Image analysis error:", error);
-    throw new Error("Could not analyze image. Please ensure the file is an image and try again.");
+    throw new Error("Could not analyze image. Please ensure the file is a valid image (JPEG, PNG, etc.) and try again.");
   }
 }
