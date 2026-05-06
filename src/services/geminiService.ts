@@ -33,3 +33,32 @@ export async function optimizePrompt(ordinaryPrompt: string): Promise<string> {
     throw new Error("Could not optimize prompt. Please check your connection or try again.");
   }
 }
+
+export async function imageToPrompt(base64Image: string, mimeType: string): Promise<string> {
+  try {
+    const imagePart = {
+      inlineData: {
+        mimeType: mimeType,
+        data: base64Image,
+      },
+    };
+    
+    const textPart = {
+      text: "Analyze this image and create a highly detailed, professional prompt to recreate this image. Include lighting, composition, style, every minor detail, colors, and mood. The output should be a structured 'Master Prompt' that another AI could use to generate an identical or very similar image.",
+    };
+
+    const response = await ai.models.generateContent({
+      model: "gemini-3-flash-preview",
+      contents: { parts: [imagePart, textPart] },
+      config: {
+        systemInstruction: SYSTEM_INSTRUCTION,
+        temperature: 0.7,
+      },
+    });
+
+    return response.text || "Failed to analyze image.";
+  } catch (error) {
+    console.error("Image analysis error:", error);
+    throw new Error("Could not analyze image. Please ensure the file is an image and try again.");
+  }
+}

@@ -22,9 +22,12 @@ import {
   Mail,
   Youtube,
   ShoppingBag,
-  BookOpen
+  BookOpen,
+  Image as ImageIcon,
+  Upload,
+  X
 } from 'lucide-react';
-import { optimizePrompt } from '@/src/services/geminiService';
+import { optimizePrompt, imageToPrompt } from '@/src/services/geminiService';
 import { cn } from '@/src/lib/utils';
 import { PROMPT_TEMPLATES, type PromptTemplate } from '@/src/constants';
 import confetti from 'canvas-confetti';
@@ -40,20 +43,35 @@ const IconMap = {
   BookOpen
 };
 
+type Tab = 'prompt' | 'image';
+
 export default function App() {
+  const [activeTab, setActiveTab] = useState<Tab>('prompt');
   const [input, setInput] = useState('');
+  const [selectedImage, setSelectedImage] = useState<string | null>(null);
+  const [imageMimeType, setImageMimeType] = useState<string>('');
   const [result, setResult] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [copied, setCopied] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleOptimize = async () => {
-    if (!input.trim() || isLoading) return;
+    if (activeTab === 'prompt' && !input.trim()) return;
+    if (activeTab === 'image' && !selectedImage) return;
+    if (isLoading) return;
     
     setIsLoading(true);
     setError(null);
     try {
-      const optimized = await optimizePrompt(input);
+      let optimized = '';
+      if (activeTab === 'prompt') {
+        optimized = await optimizePrompt(input);
+      } else if (selectedImage) {
+        const base64Data = selectedImage.split(',')[1];
+        optimized = await imageToPrompt(base64Data, imageMimeType);
+      }
+      
       setResult(optimized);
       confetti({
         particleCount: 100,
@@ -68,6 +86,30 @@ export default function App() {
     }
   };
 
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      if (!file.type.startsWith('image/')) {
+        setError('Please select an image file.');
+        return;
+      }
+      setImageMimeType(file.type);
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        setSelectedImage(event.target?.result as string);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const removeImage = () => {
+    setSelectedImage(null);
+    setImageMimeType('');
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+  };
+
   const handleCopy = () => {
     navigator.clipboard.writeText(result);
     setCopied(true);
@@ -75,13 +117,19 @@ export default function App() {
   };
 
   const selectTemplate = (template: PromptTemplate) => {
+    setActiveTab('prompt');
     setInput(template.prompt);
   };
 
   const clear = () => {
     setInput('');
+    setSelectedImage(null);
+    setImageMimeType('');
     setResult('');
     setError(null);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
   };
 
   return (
@@ -117,65 +165,137 @@ export default function App() {
             <h1 className="text-4xl md:text-5xl font-extrabold tracking-tight leading-tight">
               Elevate your AI <br/>conversations.
             </h1>
-            <p className="text-gray-400 text-lg font-medium">Transform ordinary thoughts into engineered masterpieces.</p>
+            <p className="text-gray-400 text-lg font-medium">Transform thoughts or images into engineered masterpieces.</p>
           </motion.div>
 
-          {/* Templates Scroll */}
-          <div className="space-y-3">
-            <h3 className="text-[10px] font-black uppercase tracking-widest text-[#FF6321]">Templates</h3>
-            <div className="flex gap-3 overflow-x-auto pb-2 -mx-1 px-1 custom-scrollbar scroll-smooth whitespace-nowrap">
-              {PROMPT_TEMPLATES.map((template) => {
-                const Icon = IconMap[template.icon as keyof typeof IconMap];
-                return (
-                  <button
-                    key={template.id}
-                    onClick={() => selectTemplate(template)}
-                    className="flex-shrink-0 group flex flex-col items-start gap-2 p-3 bg-white border border-gray-100 rounded-xl hover:border-brand/40 hover:shadow-lg transition-all duration-300 text-left w-32"
-                  >
-                    <div className="p-2 bg-orange-50 rounded-lg group-hover:bg-brand/10 transition-colors">
-                      <Icon className="w-4 h-4 text-brand" />
-                    </div>
-                    <span className="text-[11px] font-bold text-gray-700 truncate w-full">{template.name}</span>
-                    <span className="text-[8px] text-gray-400 font-medium leading-tight whitespace-normal line-clamp-2 h-6">{template.description}</span>
-                  </button>
-                );
-              })}
-            </div>
+          {/* Tools Tabs */}
+          <div className="flex p-1 bg-gray-100/50 rounded-2xl w-fit">
+            <button
+              onClick={() => setActiveTab('prompt')}
+              className={cn(
+                "flex items-center gap-2 px-6 py-2.5 rounded-xl text-sm font-bold transition-all",
+                activeTab === 'prompt' 
+                  ? "bg-white text-[#FF6321] shadow-sm" 
+                  : "text-gray-400 hover:text-gray-600"
+              )}
+            >
+              <Sparkles className="w-4 h-4" />
+              Prompt to Prompt
+            </button>
+            <button
+              onClick={() => setActiveTab('image')}
+              className={cn(
+                "flex items-center gap-2 px-6 py-2.5 rounded-xl text-sm font-bold transition-all",
+                activeTab === 'image' 
+                  ? "bg-white text-[#FF6321] shadow-sm" 
+                  : "text-gray-400 hover:text-gray-600"
+              )}
+            >
+              <ImageIcon className="w-4 h-4" />
+              Image to Prompt
+            </button>
           </div>
+
+          {activeTab === 'prompt' && (
+            <div className="space-y-3">
+              <h3 className="text-[10px] font-black uppercase tracking-widest text-[#FF6321]">Templates</h3>
+              <div className="flex gap-3 overflow-x-auto pb-2 -mx-1 px-1 custom-scrollbar scroll-smooth whitespace-nowrap text-sm">
+                {PROMPT_TEMPLATES.map((template) => {
+                  const Icon = IconMap[template.icon as keyof typeof IconMap];
+                  return (
+                    <button
+                      key={template.id}
+                      onClick={() => selectTemplate(template)}
+                      className="flex-shrink-0 group flex flex-col items-start gap-2 p-3 bg-white border border-gray-100 rounded-xl hover:border-brand/40 hover:shadow-lg transition-all duration-300 text-left w-32"
+                    >
+                      <div className="p-2 bg-orange-50 rounded-lg group-hover:bg-brand/10 transition-colors">
+                        <Icon className="w-4 h-4 text-brand" />
+                      </div>
+                      <span className="text-[11px] font-bold text-gray-700 truncate w-full">{template.name}</span>
+                      <span className="text-[8px] text-gray-400 font-medium leading-tight whitespace-normal line-clamp-2 h-6">{template.description}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
 
           <motion.div 
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.1 }}
-            className="input-card p-6 flex flex-col h-[360px] relative group"
+            className="input-card p-6 flex flex-col h-[400px] relative group"
           >
-            <label className="text-xs font-bold uppercase tracking-widest text-[#FF6321] mb-4">Enter Ordinary Prompt</label>
-            <textarea
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              placeholder="Ex: Write a marketing plan for a new organic coffee brand..."
-              className="flex-1 w-full bg-transparent text-gray-700 font-medium text-lg leading-relaxed border-none focus:ring-0 resize-none placeholder:text-gray-300"
-            />
+            {activeTab === 'prompt' ? (
+              <>
+                <label className="text-xs font-bold uppercase tracking-widest text-[#FF6321] mb-4">Enter Ordinary Prompt</label>
+                <textarea
+                  value={input}
+                  onChange={(e) => setInput(e.target.value)}
+                  placeholder="Ex: Write a marketing plan for a new organic coffee brand..."
+                  className="flex-1 w-full bg-transparent text-gray-700 font-medium text-lg leading-relaxed border-none focus:ring-0 resize-none placeholder:text-gray-300"
+                />
+              </>
+            ) : (
+              <div className="flex-1 flex flex-col">
+                <label className="text-xs font-bold uppercase tracking-widest text-[#FF6321] mb-4">Upload Image</label>
+                {!selectedImage ? (
+                  <div 
+                    onClick={() => fileInputRef.current?.click()}
+                    className="flex-1 border-2 border-dashed border-gray-200 rounded-2xl flex flex-col items-center justify-center gap-4 hover:border-brand/40 hover:bg-orange-50/10 transition-all cursor-pointer group"
+                  >
+                    <div className="w-16 h-16 bg-orange-50 rounded-2xl flex items-center justify-center group-hover:scale-110 transition-transform">
+                      <Upload className="w-8 h-8 text-brand" />
+                    </div>
+                    <div className="text-center">
+                      <p className="text-sm font-bold text-gray-700">Drop an image here</p>
+                      <p className="text-xs text-gray-400 mt-1">or click to browse from device</p>
+                    </div>
+                    <input 
+                      type="file" 
+                      ref={fileInputRef} 
+                      className="hidden" 
+                      accept="image/*" 
+                      onChange={handleFileChange}
+                    />
+                  </div>
+                ) : (
+                  <div className="flex-1 relative rounded-2xl overflow-hidden border border-gray-100 shadow-sm">
+                    <img 
+                      src={selectedImage} 
+                      alt="Selected" 
+                      className="w-full h-full object-cover" 
+                    />
+                    <button 
+                      onClick={removeImage}
+                      className="absolute top-4 right-4 p-2 bg-white/80 backdrop-blur rounded-full text-gray-600 hover:text-red-500 shadow-sm transition-colors"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
             
             <div className="pt-4 mt-auto">
               <button 
                 onClick={handleOptimize}
-                disabled={!input.trim() || isLoading}
+                disabled={isLoading || (activeTab === 'prompt' ? !input.trim() : !selectedImage)}
                 className={cn(
                   "w-full py-4 font-bold rounded-xl transition-all flex items-center justify-center space-x-2",
-                  input.trim() && !isLoading
+                  (activeTab === 'prompt' ? input.trim() : selectedImage) && !isLoading
                     ? "bg-gradient-to-r from-[#FF6321] to-[#FF9E21] text-white shadow-[0_8px_20px_rgba(255,99,33,0.3)] hover:scale-[1.02] active:scale-[0.98]" 
                     : "bg-gray-100 text-gray-300 cursor-not-allowed"
                 )}
               >
-                <span>{isLoading ? "Optimizing..." : "Optimize with Max Engine"}</span>
+                <span>{isLoading ? "Analyzing..." : activeTab === 'prompt' ? "Optimize with Max Engine" : "Extract Prompt with Max"}</span>
                 {!isLoading && (
-                  <Zap className={cn("w-5 h-5", input.trim() ? "fill-white" : "fill-gray-300")} />
+                  <Zap className={cn("w-5 h-5", (activeTab === 'prompt' ? input.trim() : selectedImage) ? "fill-white" : "fill-gray-300")} />
                 )}
               </button>
             </div>
 
-            {input && (
+            {(input || selectedImage) && (
               <button 
                 onClick={clear}
                 className="absolute top-6 right-6 p-1 text-gray-300 hover:text-gray-500 transition-colors"
